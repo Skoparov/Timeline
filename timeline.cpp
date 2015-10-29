@@ -701,17 +701,6 @@ void TimeLineItems::paint(QPainter *painter, const QStyleOptionGraphicsItem *opt
 	if (!mInfoMarks.isEmpty())
 	{
 		double distanceBetweenMarks = mSize.width() / mInfoMarks.size();
-		if (distanceBetweenMarks <= 2)
-		{
-			/*quint16 left =  mInfoMarks.begin().key();
-			quint16 right = (mInfoMarks.end()-1).key();
-
-			QRect marksRect(left, right, right - left, resultAreaHeight);
-			painter->fillRect(marksRect, QBrush(Qt::red));
-			*/
-			return;
-		}
-
 		quint16 warningSignMinWidth = resultAreaHeight;
 		quint16 maxWarningSigns = 8 * mSize.width() / resultAreaHeight;
 
@@ -861,36 +850,6 @@ void TimeLineItems::calculateVisibleItems()
 			mInfoMarks.insert(pos, *currItemStylePtr);
 		}
 	}
-
-	/*if (mVisibleItems.size() >= 2)
-	{
-	qSort(mVisibleItems.begin(), mVisibleItems.end(),
-	[](const VisibleItem& a, const VisibleItem& b)
-	{
-	return a.item->getStartTime() < b.item->getStartTime();
-	});
-
-	// Величина, на которую будет уменьшаться высота области за каждое пересечение с более ранним объектом
-	int deltaHeight = (mSize.height() - 2) / mVisibleItems.size();
-
-	for (auto item = mVisibleItems.begin() + 1; item != mVisibleItems.end(); ++item)
-	{
-	auto item2 = item - 1;
-	while (item2 >= mVisibleItems.begin())
-	{
-	QRect& rect = item->rect;
-	QRect& rect2 = item2->rect;
-
-	QRect interRect = rect.intersected(rect2);
-
-	if (interRect.width()){
-	rect.setTop(rect.bottom() - rect.height() + deltaHeight);
-	}
-
-	item2--;
-	}
-	}
-	}*/
 
 	mTaskStorage->unlock();
 }
