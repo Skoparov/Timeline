@@ -201,14 +201,13 @@ void TimeLineGrid::drawMarks(QPainter *painter)
 	int triangleRectWidth = (mSettings.borderIndentY - fm.height()) / 2 + 1;
 
 	// Current time mark and it's text 
-
 	QPair<int, int> currTimeMarkBorders(-1, -1);
 	QString currMarkTimeString = mTimeCenterMark.toString(textFormat);
 	quint16 currTimeMarkWidth = fm.width(currMarkTimeString);
 	quint64 currTimeMarkWidthMsec = currTimeMarkWidth*msecPerPixel;
 
 	QPair<quint64, quint64> intersection(std::max(currTime - currTimeMarkWidthMsec, startTime),
-		std::min(currTime + currTimeMarkWidthMsec, endTime));
+		                             std::min(currTime + currTimeMarkWidthMsec, endTime));
 
 	if (intersection.first < intersection.second)
 	{
@@ -306,7 +305,6 @@ void TimeLineGrid::drawMarks(QPainter *painter)
 quint64 TimeLineGrid::calculateStep(const int& maxNumberOfTextMarks)
 {
 	quint64 stepMsec = 2 * mTimeDelta / maxNumberOfTextMarks;
-
 	const quint64 month = (quint64)day * 30;
 	const quint64 year = (quint64)day * 365;
 
@@ -355,7 +353,7 @@ quint64 TimeLineGrid::calculateStep(const int& maxNumberOfTextMarks)
 			case year: tempStepMsec += year; break;
 			default: break;
 			}
-
+			
 			continue;
 		}
 
