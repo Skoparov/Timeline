@@ -12,6 +12,7 @@ The concept is there are two types of items : tasks and events.
 
 So, the basic example of using the class may look as follows:
 
+```
 TaskStoragePtr taskStorage = std::make_shared<TaskStorage>();
 SphereTimeLineWidget timeLineWidget = new SphereTimeLineWidget(taskStorage);
 
@@ -36,3 +37,4 @@ EventItemPtr eventPtr = std::make_shared<EventItem(QDateTime::currentDateTime().
                                               OperationSphereItem::EVENT_STATUS_SUCCEDED));
 
 taskStorage->addEvent(eventPtr);
+```
