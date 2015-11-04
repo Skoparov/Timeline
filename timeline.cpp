@@ -5,8 +5,8 @@
 //////////////////////////////////////////////////////////////////////////////
 
 AbstractItem::AbstractItem(QDateTime startTime, QDateTime endTime) :
-mStartTime(startTime),
-mEndTime(endTime)
+                           mStartTime(startTime),
+                           mEndTime(endTime)
 {
 
 }
@@ -41,29 +41,33 @@ QPair <QDateTime, QDateTime> AbstractItem::getIntersection(const QDateTime& star
 
     // If there is no intersection, invalidate result
     if (intersection.first >= intersection.second){
-        intersection = QPair <QDateTime, QDateTime>();
+        intersection = QPair<QDateTime, QDateTime>();
     }
 
     return intersection;
 }
 
 //////////////////////////////////////////////////////////////////////////////
-///////////////                TaskItem                      /////////////////////
+///////////////                TaskItem                  /////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
-TaskItem::TaskItem(QDateTime startTime, QDateTime endTime, quint64 taskId, bool isInfinite, TimeLineTaskType taskType) :
-mTaskId(taskId),
-mIsInfinite(isInfinite),
-mTaskType(taskType),
-AbstractItem(startTime, endTime)
+TaskItem::TaskItem(const QDateTime startTime, const QDateTime endTime, const quint64& taskId,
+                   const bool& isInfinite, const QString taskName, const TimeLineTaskType& taskType) :
+
+                   mTaskId(taskId),
+                   mIsInfinite(isInfinite),
+                   mTaskType(taskType),
+                   mTaskName(taskName),
+                   AbstractItem(startTime, endTime)
 {
     if (!mEndTime.isValid()){
-        mEndTime = isInfinite ? QDateTime::currentDateTime().addYears(100) : mStartTime;
+        mEndTime = isInfinite? QDateTime::currentDateTime().addYears(INFINITY) : mStartTime;
     }
 }
 
 bool TaskItem::addEvent(EventItemPtr event)
 {
+    Q_ASSERT(event != nullptr);
     if (event == nullptr){
         return false;
     }
@@ -71,10 +75,11 @@ bool TaskItem::addEvent(EventItemPtr event)
     if (!mEvent.contains(event->getStartTime()))
     {
         mEvent.insert(event->getEndTime(), event);
-        if (event->getStatus() == EventItem::EVENT_STATUS_FAILED)
+        if (event->getStatus() == EventItem::EVENT_STATUS_FAILURE)
         {
-            QDateTime failureTime = QDateTime::fromMSecsSinceEpoch(event->getStartTime().toMSecsSinceEpoch() / 2 +
-                event->getEndTime().toMSecsSinceEpoch() / 2);
+            QDateTime failureTime = QDateTime::fromMSecsSinceEpoch(
+                        event->getStartTime().toMSecsSinceEpoch() / 2 +
+                        event->getEndTime().toMSecsSinceEpoch() / 2);
 
             mEventsWithInfoSigh.insert(failureTime, event);
         }
@@ -117,6 +122,11 @@ TimeLineTaskType TaskItem::getTaskType() const
     return mTaskType;
 }
 
+QString TaskItem::getTaskName() const
+{
+    return mTaskName;
+}
+
 AbstractItem::ItemType TaskItem::getItemType() const
 {
     return ITEM_TYPE_TASK;
@@ -127,14 +137,15 @@ AbstractItem::ItemType TaskItem::getItemType() const
 //////////////////////////////////////////////////////////////////////////////
 
 EventItem::EventItem(QDateTime startTime, QDateTime endTime, EventStatus stat) :
-                    AbstractItem(startTime, endTime),
-                    mStatus(stat)
+                     AbstractItem(startTime, endTime),
+                     mStatus(stat)
 {
 
 }
 
 bool EventItem::setParentTask(TaskItemPtr task)
 {
+    Q_ASSERT(task != nullptr);
     if (task == nullptr){
         return false;
     }
@@ -162,20 +173,34 @@ AbstractItem::ItemType EventItem::getItemType() const
 ///////////////				TimeLineGrid				//////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
+
+const QString TimeLineGrid::mTimeFormat = "hh:mm:ss";
+const QString TimeLineGrid::mDayFormat = "dd:MM:yy";
+const double TimeLineGrid::mOverlayOpacity = 0.3;
+
 TimeLineGrid::TimeLineGrid(QGraphicsItem *parent) : QGraphicsItem(parent)
 {
 
 }
 
 void TimeLineGrid::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
-{
-    //debug info
-    //painter->drawText(mBorderIndentX + 10, mSize.height() - 30 - mBorderIndentY, "BeginTime : " + mTimeCenterMark.addMSecs(-1 * (quint64)mTimeDelta).toString());
-    //painter->drawText(mBorderIndentX + 10, mSize.height() - 15 - mBorderIndentY, "EndTime : " + mTimeCenterMark.addMSecs((quint64)mTimeDelta).toString());
-    //painter->drawText(mBorderIndentX + 10, mSize.height() - 45 - mBorderIndentY, "MousePos : " + QString::number(mMousePos.x()));
+{    
+#ifdef DEBUG
+    painter->drawText(mSettings.borderIndentX + 10,
+                      mSize.height() - 30 - mSettings.borderIndentX,
+                      "BeginTime : " + mTimeCenterMark.addMSecs(-1 * (quint64)mTimeDelta).toString());
 
-    //-----------------------------------------------
+    painter->drawText(mSettings.borderIndentX + 10,
+                      mSize.height() - 15 - mSettings.borderIndentX,
+                      "EndTime : " + mTimeCenterMark.addMSecs((quint64)mTimeDelta).toString());
+
+    painter->drawText(mSettings.borderIndentX + 10,
+                      mSize.height() - 45 - mSettings.borderIndentX,
+                      "MousePos : " + QString::number(mMousePos.x()));
+#endif
+
     painter->setPen(QPen(mStyle.borderColor));
+
     // Paint item area border
     painter->drawRect(graphicsRect());
 
@@ -190,54 +215,41 @@ void TimeLineGrid::drawMarks(QPainter *painter)
     quint64 startTime = mTimeCenterMark.toMSecsSinceEpoch() - mTimeDelta;
     quint64 endTime = mTimeCenterMark.toMSecsSinceEpoch() + mTimeDelta;
     quint64 currTime = QDateTime::currentDateTime().toMSecsSinceEpoch();
-    double msecPerPixel = (2 * mTimeDelta) / mSize.width();
-    double pixelsPerMsec = 1 / msecPerPixel;
+    double msecPerPixel = (2 * mTimeDelta) / mSize.width();    
 
     QFont font = painter->font();
     QFontMetrics fm(font);
-    QString textFormat = 2 * mTimeDelta < day ? "hh:mm:ss" : "dd.MM.yy";
+    QString textFormat = 2 * mTimeDelta < day ? mTimeFormat : mDayFormat;
     font.setPointSize(mSettings.borderIndentY * 0.5);
-
-    int triangleRectWidth = (mSettings.borderIndentY - fm.height()) / 2 + 1;
 
     // Current time mark and it's text
     QPair<int, int> currTimeMarkBorders(-1, -1);
-    QString currMarkTimeString = mTimeCenterMark.toString(textFormat);
-    quint16 currTimeMarkWidth = fm.width(currMarkTimeString);
-    quint64 currTimeMarkWidthMsec = currTimeMarkWidth*msecPerPixel;
+    drawCurrTimeMark(msecPerPixel, currTime, startTime, endTime,
+                     currTimeMarkBorders, textFormat, fm, painter);
 
-    QPair<quint64, quint64> intersection(std::max(currTime - currTimeMarkWidthMsec, startTime),
-                                     std::min(currTime + currTimeMarkWidthMsec, endTime));
+    // Mouse time mark and it's text
+    drawMouseTimeMark(painter);
 
-    if (intersection.first < intersection.second)
-    {
-        painter->setPen(QPen(mStyle.currMarkColor));
 
-        double pixelsPerMsec = 1/msecPerPixel;
-        int currTimePos = (currTime > startTime) ?
-            pixelsPerMsec * (currTime - startTime) : -pixelsPerMsec * (startTime - currTime);
+    // Grid marks
+    drawGridMarks(fm, msecPerPixel, startTime, textFormat, currTimeMarkBorders, painter);
+}
 
-        currTimeMarkBorders.first = currTimePos - currTimeMarkWidth;
-        currTimeMarkBorders.second = currTimePos + currTimeMarkWidth;
-
-        // line
-        if (currTimePos < mSize.width() - mSettings.borderIndentX &&  currTimePos > mSettings.borderIndentX){
-            painter->drawLine(currTimePos, mSettings.borderIndentY, currTimePos, mSize.height() - mSettings.borderIndentY);
-        }
-
-        // curr time mark text, the size is calculated depending on the indent from the border
-        paintText(true, currTimePos, currMarkTimeString, painter, mStyle.currMarkColor);
-    }
-
-    // grid time marks
+void TimeLineGrid::drawGridMarks(const QFontMetrics& fm, const double& msecPerPixel,
+                                 quint64& startTime, const QString textFormat,
+                                 QPair<int, int> &currTimeMarkBorders, QPainter *painter)
+{
     painter->setPen(QPen(mStyle.timeMarksTextColor));
 
     // calculate step between grid items in msec
+    double pixelsPerMsec = 1 / msecPerPixel;
     double part = mMousePos.x() / mSize.width();
     quint64 mSecSinseStart = 2 * mTimeDelta*part + mTimeCenterMark.addMSecs(-1 * (quint64)mTimeDelta).toMSecsSinceEpoch();
     QString mouseTimeString = QDateTime().fromMSecsSinceEpoch(mSecSinseStart).toString("dd.MM.yy hh:mm:ss");
     quint16 textWidth = fm.width(mouseTimeString);
     quint16 maxNumberOfTextMarks = mSize.width() / (textWidth*1.5);
+    int triangleRectWidth = (mSettings.borderIndentY - fm.height()) / 2 + 1;
+
     if (maxNumberOfTextMarks == 0){
         return;
     }
@@ -257,18 +269,17 @@ void TimeLineGrid::drawMarks(QPainter *painter)
             pixelsPerMsec * (timeMark - startTime) : -pixelsPerMsec * (startTime - timeMark);
 
         QString timeText = QDateTime().fromMSecsSinceEpoch(timeMark).toString(textFormat);
-
         if (pos - fm.width(timeText) / 2 < mSize.width() - mSettings.borderIndentX)
         {
             // make an item semitransparent when it overlays the current mark text
-            qreal opacity = 1;
+            double opacity = 1;
             if (currTimeMarkBorders.first != -1 && currTimeMarkBorders.second != -1)
             {
                 QPair<int, int> intersection(std::max(currTimeMarkBorders.first, pos - fm.width(timeText) / 2),
-                    std::min(currTimeMarkBorders.second, pos + fm.width(timeText) / 2));
+                                             std::min(currTimeMarkBorders.second, pos + fm.width(timeText) / 2));
 
                 if (intersection.first < intersection.second){
-                    opacity = 0.3;
+                    opacity = mOverlayOpacity;
                 }
             }
 
@@ -282,7 +293,66 @@ void TimeLineGrid::drawMarks(QPainter *painter)
             break;
         }
     }
+}
 
+void TimeLineGrid::drawCurrTimeMark(const double &msecPerPixel, const quint64 &currTime, const quint64& endTime,
+                                    const quint64 &startTime, QPair<int, int>& currTimeMarkBorders,
+                                    const QString textFormat, const QFontMetrics &fm, QPainter *painter)
+{
+    // Current time mark and it's text
+    QString currMarkTimeString = mTimeCenterMark.toString(textFormat);
+    quint16 currTimeMarkWidth = fm.width(currMarkTimeString);
+    quint64 currTimeMarkWidthMsec = currTimeMarkWidth * msecPerPixel;
+
+    QPair<quint64, quint64> intersection(std::max(currTime - currTimeMarkWidthMsec, startTime),
+                                         std::min(currTime + currTimeMarkWidthMsec, endTime));
+
+    if (intersection.first < intersection.second)
+    {
+        painter->setPen(QPen(mStyle.currMarkColor));
+
+        double pixelsPerMsec = 1/msecPerPixel;
+        int currTimePos = (currTime > startTime) ?
+            pixelsPerMsec * (currTime - startTime) : -pixelsPerMsec * (startTime - currTime);
+
+        currTimeMarkBorders.first = currTimePos - currTimeMarkWidth;
+        currTimeMarkBorders.second = currTimePos + currTimeMarkWidth;
+
+        // line
+        if (currTimePos < mSize.width() - mSettings.borderIndentX &&
+            currTimePos > mSettings.borderIndentX)
+        {
+            painter->drawLine(currTimePos, mSettings.borderIndentY, currTimePos, mSize.height() - mSettings.borderIndentY);
+        }
+
+        // curr time mark text, the size is calculated depending on the indent from the border
+        paintText(true, currTimePos, currMarkTimeString, painter, mStyle.currMarkColor);
+    }
+}
+
+void TimeLineGrid::drawMouseTimeMark(QPainter *painter)
+{
+    // The mouse mark and it's text
+    painter->setPen(QPen(mStyle.mouseMarkColor));
+
+    // line, border check
+    int linePosX = mMousePos.x();
+    QRect area = graphicsRect();
+
+    if (linePosX < area.left()){
+        linePosX = area.left();
+    }
+    else if (linePosX > area.right()){
+        linePosX = area.right();
+    }
+
+    painter->drawLine(linePosX, mSettings.borderIndentY, linePosX, mSize.height() - mSettings.borderIndentY);
+
+    // mouse time mark text, the size is calculated depending on the indent from the border
+    double part = mMousePos.x() / mSize.width();
+    quint64 mSecSinseStart = 2 * mTimeDelta*part + mTimeCenterMark.addMSecs(-1 * (quint64)mTimeDelta).toMSecsSinceEpoch();
+    QString mouseTimeString = QDateTime().fromMSecsSinceEpoch(mSecSinseStart).toString("dd.MM.yy hh:mm:ss");
+    paintText(false, linePosX, mouseTimeString, painter, mStyle.mouseMarkColor);
 }
 
 quint64 TimeLineGrid::calculateStep(const int& maxNumberOfTextMarks)
@@ -292,7 +362,7 @@ quint64 TimeLineGrid::calculateStep(const int& maxNumberOfTextMarks)
     const quint64 year = (quint64)day * 365;
 
     if (stepMsec < second){
-        return quint64(-1);
+        return quint64(-1); //error value
     }
 
     quint64 timeUnit = second;
@@ -330,19 +400,19 @@ quint64 TimeLineGrid::calculateStep(const int& maxNumberOfTextMarks)
             {
             case second: tempStepMsec += second; break;
             case minute: tempStepMsec += minute; break;
-            case hour: tempStepMsec += hour; break;
-            case day: tempStepMsec += day; break;
-            case month: tempStepMsec = year; break;
-            case year: tempStepMsec += year; break;
+            case hour: tempStepMsec   += hour; break;
+            case day: tempStepMsec    += day; break;
+            case month: tempStepMsec  = year; break;
+            case year: tempStepMsec   += year; break;
             default: break;
             }
 
             continue;
         }
 
-        if ((timeUnit == second || timeUnit == minute) && numberOfUnits > 30)
+        if ((timeUnit == second || timeUnit == minute) && numberOfUnits > mMaxNumberOfUnits)
         {
-            tempStepMsec = 60 * timeUnit;
+            tempStepMsec = 60 * timeUnit; // promote to the next time unit
             continue;
         }
 
@@ -366,23 +436,25 @@ void TimeLineGrid::paintText(bool topBottom, int xPos, QString text, QPainter* p
     pen.setColor(color);
     painter->setPen(pen);
 
-    int yPos = topBottom ? (mSettings.borderIndentY - fm.height()) / 2 : mSize.height() - fm.height() - (mSettings.borderIndentY - fm.height()) / 2;
+    int yPos = topBottom ? (mSettings.borderIndentY - fm.height()) / 2 :
+                            mSize.height() - fm.height() - (mSettings.borderIndentY - fm.height()) / 2;
+
     QRect textRect(xPos - fm.width(text) / 2, yPos, fm.width(text), fm.height());
     painter->drawText(textRect, Qt::AlignCenter, text);
 }
 
 bool TimeLineGrid::setTimeRange(const QDateTime& centralTime, const quint64& timeDelta)
 {
-    /**< If the new scale is valid, set it */
+    // If the new scale is valid, set it
     if (timeDelta >= mSettings.maximumScale && timeDelta <= mSettings.minimumScale)
     {
         mTimeCenterMark = centralTime;
         mTimeDelta = timeDelta;
         update();
 
-        return true;
-
         emit rangeChanged(mTimeCenterMark.addMSecs((-1)*timeDelta), mTimeCenterMark.addMSecs(timeDelta));
+
+        return true;
     }
 
     return false;
@@ -454,7 +526,10 @@ QRectF TimeLineGrid::boundingRect() const
 QRect TimeLineGrid::graphicsRect() const
 {
     // Timeline item painting area, with indents taken into account
-    return QRect(mSettings.borderIndentX, mSettings.borderIndentY, mSize.width() - 2 * mSettings.borderIndentX, mSize.height() - 2 * mSettings.borderIndentY);
+    return QRect(mSettings.borderIndentX,
+                 mSettings.borderIndentY,
+                 mSize.width() - 2 * mSettings.borderIndentX,
+                 mSize.height() - 2 * mSettings.borderIndentY);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -465,6 +540,7 @@ bool TaskStorage::addTask(const TaskItemPtr task)
 {
     QMutexLocker lock(&mMutex);
 
+    Q_ASSERT(task != nullptr);
     if (task == nullptr){
         return false;
     }
@@ -506,11 +582,10 @@ bool TaskStorage::addEvent(const quint32 taskId, const EventItemPtr event)
     bool result = true;
 
     auto parentTask = mTasks.find(taskId);
-    if (parentTask == mTasks.end()){
-        result = false;
-    }
 
-    if (result && (*parentTask)->addEvent(event)){
+    if (parentTask != mTasks.end() &&
+       (*parentTask)->addEvent(event))
+    {
         event->setParentTask(*parentTask);
     }
     else{
@@ -523,7 +598,6 @@ bool TaskStorage::addEvent(const quint32 taskId, const EventItemPtr event)
 void TaskStorage::clear()
 {
     QMutexLocker lock(&mMutex);
-
     mTasks.clear();
 }
 
@@ -553,6 +627,7 @@ EventItemPtr TaskStorage::getEvent(const quint64& taskId, const QDateTime& start
         TaskItemPtr taskPtr = *taskIter;
         const QMap<QDateTime, EventItemPtr> events = taskPtr->getEvents();
         auto eventIter = events.find(startTime);
+
         if (eventIter != events.end()){
             eventPtr = *eventIter;
         }
@@ -580,7 +655,8 @@ void TaskStorage::unlock()
 ///////////////				TimeLineItems				//////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
-TimeLineItems::TimeLineItems(TaskStoragePtr tasks, QGraphicsItem *parent) : mTaskStorage(tasks), QGraphicsItem(parent)
+TimeLineItems::TimeLineItems(TaskStoragePtr tasks, QGraphicsItem *parent) :
+                             mTaskStorage(tasks), QGraphicsItem(parent)
 {
 
 }
@@ -619,20 +695,39 @@ void TimeLineItems::paint(QPainter *painter, const QStyleOptionGraphicsItem *opt
 
     painter->setPen(QPen(mStyle.borderColor));
     quint16 resultAreaHeight = mSize.height()*mSettings.infoHeightPortion;
+
+    //Draw separator
     painter->drawLine(1, resultAreaHeight, mSize.width(), resultAreaHeight);
 
+    // Draw axis
+    drawAxis(resultAreaHeight, painter);
+
+    // Paint visible items
+    paintVisibleItems(painter);
+
+    // paint icons
+    if (!mInfoMarks.isEmpty()){
+        paintIcons(resultAreaHeight, painter);
+    }
+}
+
+void TimeLineItems::drawAxis(const quint16& resultAreaHeight, QPainter *painter)
+{
     // paint axis
     QColor axisColor = mStyle.borderColor;
     axisColor.setAlphaF(mStyle.axisOpacity);
     painter->setPen(QPen(axisColor));
     quint32 distBetweenAxis = (boundingRect().height() - resultAreaHeight) / (mItemStyles.size() + 1);
+
     for (quint8 axisNum = 0; axisNum < mItemStyles.size(); ++axisNum)
     {
         quint32 currAxisYPos = boundingRect().height() - distBetweenAxis * (axisNum + 1);
         painter->drawLine(1, currAxisYPos, mSize.width(), currAxisYPos);
     }
+}
 
-    // Paint visible items
+void TimeLineItems::paintVisibleItems(QPainter *painter)
+{
     for (auto& visibleItem : mVisibleItems)
     {
         painter->setRenderHint(QPainter::Antialiasing);
@@ -666,80 +761,79 @@ void TimeLineItems::paint(QPainter *painter, const QStyleOptionGraphicsItem *opt
 
         painter->setOpacity(1);
     }
+}
 
+void TimeLineItems::paintIcons(const quint16& resultAreaHeight,QPainter *painter)
+{
+    const quint16& warningSignMinWidth = resultAreaHeight;
+    quint16 maxWarningSigns = 8 * mSize.width() / resultAreaHeight;
 
-    // paint icons
-    if (!mInfoMarks.isEmpty())
+    quint16 warningLineStart_Y = mInfoMarks.size() <= maxWarningSigns ? resultAreaHeight / 2 : 0;
+
+    QHash<QString, std::shared_ptr<QSvgRenderer>> svgRenderers;
+    QImage image(warningSignMinWidth, warningSignMinWidth, QImage::Format_ARGB32);
+    image.fill(0);
+    QPainter painter1(&image);
+
+    for (auto mark = mInfoMarks.begin(); mark != mInfoMarks.end(); ++mark)
     {
-        quint16 warningSignMinWidth = resultAreaHeight;
-        quint16 maxWarningSigns = 8 * mSize.width() / resultAreaHeight;
+        auto markStyle = *mark;
+        auto markPos = mark.key();
 
-        quint16 warningLineStart_Y = mInfoMarks.size() <= maxWarningSigns ? resultAreaHeight / 2 : 0;
+        if (markStyle->infoIconPath.isEmpty()){
+            continue;
+        }
 
-        QHash<QString, std::shared_ptr<QSvgRenderer>> svgRenderers;
-        QImage image(warningSignMinWidth, warningSignMinWidth, QImage::Format_ARGB32);
-        image.fill(0);
-        QPainter painter1(&image);
-
-        for (auto mark = mInfoMarks.begin(); mark != mInfoMarks.end(); ++mark)
+        painter->setPen(markStyle->infoPen);
+        if (markPos < mSize.width())
         {
-            auto markStyle = *mark;
-            auto markPos = mark.key();
+            painter->setRenderHints(QPainter::Antialiasing, false);
+            painter->setRenderHints(QPainter::HighQualityAntialiasing, false);
+            painter->drawLine(markPos, warningLineStart_Y, markPos, resultAreaHeight - 1);
+        }
 
-            if (markStyle->infoIconPath.isEmpty()){
-                continue;
-            }
+        if (mInfoMarks.size() <= maxWarningSigns)
+        {
+            std::shared_ptr<QSvgRenderer> renderer;
 
-            painter->setPen(markStyle->infoPen);
-            if (markPos < mSize.width())
+            auto rendererIter = svgRenderers.find(markStyle->infoIconPath);
+            if (rendererIter == svgRenderers.end())
             {
-                painter->setRenderHints(QPainter::Antialiasing, false);
-                painter->setRenderHints(QPainter::HighQualityAntialiasing, false);
-                painter->drawLine(markPos, warningLineStart_Y, markPos, resultAreaHeight - 1);
+                renderer = std::make_shared<QSvgRenderer>(markStyle->infoIconPath);
+                renderer->render(&painter1);
+                svgRenderers.insert(markStyle->infoIconPath, renderer);
+
+            }
+            else{
+                renderer = *rendererIter;
             }
 
-            if (mInfoMarks.size() <= maxWarningSigns)
+            QRectF sourseRect(0.0, 0.0, warningSignMinWidth, warningSignMinWidth);
+            QRectF imageRect(markPos - warningSignMinWidth / 2, (resultAreaHeight - warningSignMinWidth) / 2, warningSignMinWidth, warningSignMinWidth);
+
+            if (imageRect.left() < 0)
             {
-                std::shared_ptr<QSvgRenderer> renderer;
-
-                auto rendererIter = svgRenderers.find(markStyle->infoIconPath);
-                if (rendererIter == svgRenderers.end())
-                {
-                    renderer = std::make_shared<QSvgRenderer>(markStyle->infoIconPath);
-                    renderer->render(&painter1);
-                    svgRenderers.insert(markStyle->infoIconPath, renderer);
-
-                }
-                else{
-                    renderer = *rendererIter;
-                }
-
-                QRectF sourseRect(0.0, 0.0, warningSignMinWidth, warningSignMinWidth);
-                QRectF imageRect(markPos - warningSignMinWidth / 2, (resultAreaHeight - warningSignMinWidth) / 2, warningSignMinWidth, warningSignMinWidth);
-
-                if (imageRect.left() < 0)
-                {
-                    sourseRect.setLeft(std::abs(imageRect.left()));
-                    imageRect.setLeft(0);
-                }
-
-                if (imageRect.right() > mSize.width())
-                {
-                    int delta = imageRect.right() - mSize.width();
-                    sourseRect.setRight(sourseRect.right() - delta);
-                    imageRect.setRight(imageRect.right() - delta);
-                }
-
-                painter->setRenderHints(QPainter::Antialiasing, true);
-                painter->setRenderHints(QPainter::HighQualityAntialiasing, true);
-                painter->drawImage(imageRect, image, sourseRect);
+                sourseRect.setLeft(std::abs(imageRect.left()));
+                imageRect.setLeft(0);
             }
+
+            if (imageRect.right() > mSize.width())
+            {
+                int delta = imageRect.right() - mSize.width();
+                sourseRect.setRight(sourseRect.right() - delta);
+                imageRect.setRight(imageRect.right() - delta);
+            }
+
+            painter->setRenderHints(QPainter::Antialiasing, true);
+            painter->setRenderHints(QPainter::HighQualityAntialiasing, true);
+            painter->drawImage(imageRect, image, sourseRect);
         }
     }
 }
 
 void TimeLineItems::calculateVisibleItems()
 {
+    Q_ASSERT(mTaskStorage != nullptr);
     if (mTaskStorage == nullptr || mItemStyles.isEmpty()){
         return;
     }
@@ -780,14 +874,14 @@ void TimeLineItems::calculateVisibleItems()
             continue;
         }
 
-        /**< Task itself */
+        // Task itself
         quint32 startPos = (intersection.first.toMSecsSinceEpoch() - visibleRangeStartTime.toMSecsSinceEpoch())*pixelsPerMSec;
         quint32 width = (intersection.second.toMSecsSinceEpoch() - intersection.first.toMSecsSinceEpoch())*pixelsPerMSec;
         QRect itemRect(startPos, currAxisYPos - taskHeight / 2, width, taskHeight);
 
         mVisibleItems.append(VisibleItem(task, *currItemStylePtr, itemRect));
 
-        /**< If the scale is appropriate, paint events */
+        // If the scale is appropriate
         if (mTimeDelta <= mSettings.eventsVisibleScale && task->eventCount())
         {
             const QMap<QDateTime, EventItemPtr>& events = task->getEvents();
@@ -868,11 +962,11 @@ QRectF TimeLineItems::boundingRect() const
 //////////////////////////////////////////////////////////////////////////////
 
 SphereTimeLineScaler::SphereTimeLineScaler(QObject* parent /*= 0*/) :
-mZoomStepTime(350),
-mElementalZoomTime(50),
-mZoomStepRelaxationCoeff(0.000625),
-mScheduledScaling(0),
-QObject(parent)
+                                           mZoomStepTime(350),
+                                           mElementalZoomTime(50),
+                                           mZoomStepRelaxationCoeff(0.000625),
+                                           mScheduledScaling(0),
+                                           QObject(parent)
 {
     mZoomingTimeLine = new QTimeLine(mZoomStepTime, this);
     mZoomingTimeLine->setUpdateInterval(mElementalZoomTime);
@@ -901,18 +995,15 @@ void SphereTimeLineScaler::stopScaling()
 
 void SphereTimeLineScaler::onUpdateScale(qreal)
 {
-    qreal factor = 1.0 + qreal(mScheduledScaling)*mZoomStepRelaxationCoeff; // The more zomoming iterations are scheduled, the faster the zooming is
+    // The more zomoming iterations are scheduled, the faster the zooming is
+    qreal factor = 1.0 + qreal(mScheduledScaling)*mZoomStepRelaxationCoeff;
     emit scale(factor);
 }
 
 void SphereTimeLineScaler::scalingFinished()
 {
-    if (mScheduledScaling > 0){
-        mScheduledScaling--;
-    }
-    else{
-        mScheduledScaling++;
-    }
+    mScheduledScaling = mScheduledScaling > 0?
+                        mScheduledScaling - 1 : mScheduledScaling + 1;
 }
 
 void SphereTimeLineScaler::setZoomStepTime(const quint64& zoomStepTime)
@@ -951,14 +1042,14 @@ quint64 SphereTimeLineScaler::getDefaultScale() const
 
 
 SphereTimeLineScroller::SphereTimeLineScroller(QObject* parent /*= 0*/) :
-mDragIsOngoing(false),
-mMouseDragDistance(0),
-mInitialVelocity(0),
-mMsecPerPixel(0),
-mFrictionCoeff(0.66),
-QObject(parent)
+                        mDragIsOngoing(false),
+                        mMouseDragDistance(0),
+                        mInitialVelocity(0),
+                        mMsecPerPixel(0),
+                        mFrictionCoeff(0.66),
+                        QObject(parent)
 {
-    mScrollingTimeLine = new QTimeLine(350, this);
+    mScrollingTimeLine = new QTimeLine(mTotalElementalScrollDuration, this);
     mScrollingTimeLine->setUpdateInterval(mElementalScrollTime);
 
     connect(mScrollingTimeLine, SIGNAL(valueChanged(qreal)), this, SLOT(onUpdateScroll(qreal)));
@@ -970,8 +1061,11 @@ void SphereTimeLineScroller::startScrolling(const QDateTime startTime, const dou
     if (mMouseDragDistance)
     {
         // Start speed in px/msec, where 1 px = 1 millimeter
-        mInitialVelocity = (double)mMouseDragDistance / (QDateTime::currentDateTime().toMSecsSinceEpoch() - mLastMouseTrack.toMSecsSinceEpoch());
-        double scrollTime = std::abs(mInitialVelocity / (mFrictionCoeff*mFreeFallAcceleration)) * 1000; // The time until the scrolling stops
+        mInitialVelocity = (double)mMouseDragDistance / (QDateTime::currentDateTime().toMSecsSinceEpoch() -
+                                                         mLastMouseTrack.toMSecsSinceEpoch());
+
+        // The time until the scrolling stops
+        double scrollTime = std::abs(mInitialVelocity / (mFrictionCoeff*mFreeFallAcceleration)) * 1000;
 
         if (scrollTime > 0)
         {
@@ -1013,7 +1107,9 @@ void SphereTimeLineScroller::onUpdateScroll(qreal)
         acceleration = -acceleration;
     }
 
-    double newPos = mInitialVelocity*elapsedTime + acceleration*elapsedTime*elapsedTime / 2; // Distance from the start: v0*t - (a*t^2)/2
+    double newPos = mInitialVelocity*elapsedTime +
+                    acceleration*elapsedTime*elapsedTime / 2; // Distance from the start: v0*t - (a*t^2)/2
+
     QDateTime newCentralTime = mScrollStartTime.addMSecs(newPos*mMsecPerPixel); // New central time
 
     emit scroll(newCentralTime);
@@ -1141,28 +1237,26 @@ void TimeLineWidget::mousePressEvent(QMouseEvent *event)
                 emit eventClicked(event->getParentTask()->getTaskId(), event->getStartTime());
 
                 qDebug() << QString("Clicked event: taskId %1 | startTime %2 | endTime %3")
-                    .arg(event->getParentTask()->getTaskId())
-                    .arg(event->getStartTime().toString())
-                    .arg(event->getEndTime().toString());
+                            .arg(event->getParentTask()->getTaskId())
+                            .arg(event->getStartTime().toString())
+                            .arg(event->getEndTime().toString());
             }
         }
     }
-    else // otherwise scroll the timeline
+    else if (rect().contains(event->pos()) &&
+             event->button() == Qt::LeftButton) // otherwise scroll the timeline
     {
-        if (rect().contains(event->pos()) && event->button() == Qt::LeftButton)
+        mScroller->stopScrolling();
+
+        QPushButton* realTimeButton = (QPushButton*)mRealTimeButtonProxy->widget();
+        if (!realTimeButton->isChecked()) // If real time mode is off, start scrolling
         {
-            mScroller->stopScrolling();
+            mScroller->setDragIsOngoing(true);
+            mScroller->setLastMouseTrackTime(QDateTime::currentDateTime());
+            viewport()->setCursor(Qt::ClosedHandCursor);
 
-            QPushButton* realTimeButton = (QPushButton*)mRealTimeButtonProxy->widget();
-            if (!realTimeButton->isChecked()) // If real time mode is off, start scrolling
-            {
-                mScroller->setDragIsOngoing(true);
-                mScroller->setLastMouseTrackTime(QDateTime::currentDateTime());
-                viewport()->setCursor(Qt::ClosedHandCursor);
-
-                if (mTaskInfoLabel->isVisible()){
-                    mTaskInfoLabel->hide();
-                }
+            if (mTaskInfoLabel->isVisible()){
+                mTaskInfoLabel->hide();
             }
         }
     }
@@ -1253,27 +1347,21 @@ void TimeLineWidget::wheelEvent(QWheelEvent *event)
 
 QString TimeLineWidget::createStringForItem(TimeLineItemPtr item)
 {
-    TimeLineTaskType taskType;
-    quint32 taskId;
+    Q_ASSERT(item != nullptr);
+    if(item == nullptr){
+        return QString();
+    }
 
+    QString taskName;
     AbstractItem::ItemType type = item->getItemType();
 
-    if (type == AbstractItem::ITEM_TYPE_EVENT)
-    {
-        EventItemPtr event = std::dynamic_pointer_cast<EventItem>(item);
-        taskType = event->getParentTask()->getTaskType();
-        taskId = event->getParentTask()->getTaskId();
-    }
-    else if (type == AbstractItem::ITEM_TYPE_TASK)
-    {
-        TaskItemPtr event = std::dynamic_pointer_cast<TaskItem>(item);
-        taskType = event->getTaskType();
-        taskId = event->getTaskId();
-    }
+   if (type == AbstractItem::ITEM_TYPE_TASK)
+   {
+        TaskItemPtr event = std::dynamic_pointer_cast<TaskItem>(item);        
+        taskName = event->getTaskName();
+   }
 
-    QString taskTypeStr;// = SphereConverter::taskTypeToString(taskType);
-
-    return QString(" %1 #%2 ").arg(taskTypeStr).arg(taskId);
+    return taskName;
 }
 
 void TimeLineWidget::addItemType(const TimeLineTaskType type, const TaskStyle& style)
@@ -1323,13 +1411,15 @@ void TimeLineWidget::rearrangeWidgets(QSize size)
     mItems->setSize(graphicsRect.size(), graphicsRect.topLeft());
     mItems->setTime(mGrid->getTimeMark(), mGrid->getTimeDelta());
 
-    QPushButton* realTimeButton = (QPushButton*)mRealTimeButtonProxy->widget();
-    double sizeMult = 0.8;
+    QPushButton* realTimeButton = (QPushButton*)mRealTimeButtonProxy->widget();  
     quint16 buttonHeight = mItems->boundingRect().height();
     buttonHeight *= mItems->getSettings().infoHeightPortion;
     realTimeButton->setFixedSize(buttonHeight, buttonHeight);
-    realTimeButton->setIconSize(QSize(realTimeButton->width()*sizeMult, realTimeButton->height()*sizeMult));
-    mRealTimeButtonProxy->setGeometry(QRect(graphicsRect.left(), graphicsRect.top(), realTimeButton->width(), realTimeButton->height()));
+    realTimeButton->setIconSize(QSize(realTimeButton->width(), realTimeButton->height()));
+    mRealTimeButtonProxy->setGeometry(QRect(graphicsRect.left(),
+                                            graphicsRect.top(),
+                                            realTimeButton->width(),
+                                            realTimeButton->height()));
 
     scene()->setSceneRect(mGrid->boundingRect());
 }
@@ -1337,18 +1427,22 @@ void TimeLineWidget::rearrangeWidgets(QSize size)
 void TimeLineWidget::setRealTime()
 {
     QPushButton* realTimeButton = (QPushButton*)mRealTimeButtonProxy->widget();
+
+    Q_ASSERT(realTimeButton != nullptr);
+    if(realTimeButton == nullptr){
+        return;
+    }
+
     if (realTimeButton->isChecked())
     {
-        realTimeButton->setIcon(QIcon(":/Sphere/Resources/sphere_timeline_clock_32.png"));
-        bool ok = mGrid->setTimeRange(QDateTime::currentDateTime(), mGrid->getTimeDelta());
+        realTimeButton->setIcon(QIcon(":/icons/realtime_on_128"));
 
-        if (ok)
-        {
+        if (mGrid->setTimeRange(QDateTime::currentDateTime(), mGrid->getTimeDelta())){
             mItems->setTime(mGrid->getTimeMark(), mGrid->getTimeDelta());
         }
     }
     else{
-        realTimeButton->setIcon(QIcon(":/Sphere/Resources/sphere_timeline_clock_offline_32.png"));
+        realTimeButton->setIcon(QIcon(":/icons/realtime_off_128.png"));
     }
 }
 

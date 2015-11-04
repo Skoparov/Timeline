@@ -28,13 +28,14 @@ TaskItemPtr taskPtr = std::make_shared<TaskItem>(QDateTime::currentDateTime(),
                                                  QDateTime::currentDateTime().addMonths(10), 
                                                  0,    //no end time
                                                  true, //task is infinite 
+												 "TEST_TASK_NAME",
                                                  TEST_ITEM_TYPE_1 ));
                                              
 taskStorage->addTask(taskPtr);
 
 EventItemPtr eventPtr = std::make_shared<EventItem(QDateTime::currentDateTime().addMonth(5), 
-                                                  QDateTime::currentDateTime().addMonth(6), 
-                                                  OperationSphereItem::EVENT_STATUS_SUCCEDED));
+                                                   QDateTime::currentDateTime().addMonth(6), 
+                                                   OperationSphereItem::EVENT_STATUS_SUCCEDED));
 
 taskStorage->addEvent(eventPtr);
 ```

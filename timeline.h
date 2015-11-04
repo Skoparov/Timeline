@@ -1,6 +1,8 @@
 #ifndef TIMELINE_H
 #define TIMELINE_H
 
+#define DEBUG
+
 #include <QMap>
 #include <QHash>
 #include <QRect>
@@ -110,7 +112,7 @@ public:
     {
         EVENT_STATUS_SUCCEDED,
         EVENT_STATUS_ABORTED,
-        EVENT_STATUS_FAILED,
+        EVENT_STATUS_FAILURE,
         EVENT_STATUS_INVALID
     };
 
@@ -146,13 +148,18 @@ class TaskItem : public AbstractItem
 private:
     quint64 mTaskId;
     bool mIsInfinite;
+    QString mTaskName;
     TimeLineTaskType mTaskType;
     QMap<QDateTime, EventItemPtr> mEvent;
     QMap<QDateTime, EventItemPtr> mEventsWithInfoSigh;      // Events with icons
 
 public:
-    TaskItem(QDateTime startTime = QDateTime(), QDateTime endTime = QDateTime(),
-             quint64 taskId = -1, bool isInfinite = false, TimeLineTaskType taskType = TL_TASK_TYPE_INVALID);
+    TaskItem(const QDateTime startTime = QDateTime(),
+             const QDateTime endTime = QDateTime(),
+             const quint64& taskId = -1,
+             const bool& isInfinite = false,
+             const QString taskName = QString(),
+             const TimeLineTaskType& taskType = TL_TASK_TYPE_INVALID);
 
     //setters
     bool addEvent(EventItemPtr event);
@@ -161,6 +168,7 @@ public:
     quint64 getTaskId() const;
     ItemType getItemType() const;
     TimeLineTaskType getTaskType() const;
+    QString getTaskName() const;
 
     bool isInfinite() const;
 
@@ -189,13 +197,19 @@ private:
     static const int day = hour * 24;
     static const int week = day * 7;
 
+    static const int mMaxNumberOfUnits = 30;
+
+    static const QString mTimeFormat;
+    static const QString mDayFormat;
+    static const double mOverlayOpacity;
+
 public:
     struct TimeLineGridStyle
     {
-        QColor currMarkColor;                            // Color of the current time mark and it's text. Default - Qt::red
-        QColor mouseMarkColor;                           // Color of the mouse mark aand it's text. Default - Qt::blue
-        QColor timeMarksTextColor;                       // Text marks color. Default - 115,115,115 (light grey)
-        QColor borderColor;                              // Frame color. Default - Qt::black
+        QColor currMarkColor;                       // Color of the current time mark and it's text. Default - Qt::red
+        QColor mouseMarkColor;                      // Color of the mouse mark aand it's text. Default - Qt::blue
+        QColor timeMarksTextColor;                  // Text marks color. Default - 115,115,115 (light grey)
+        QColor borderColor;                         // Frame color. Default - Qt::black
 
         TimeLineGridStyle(const QColor& currentTimeMarkColor = Qt::red,
                           const QColor& mouseTimeMarkColor = Qt::blue,
@@ -213,26 +227,34 @@ public:
         quint64 minimumScale;                       // Min zoom time interval - WEEK
 
         TimeLineGridSettings(const quint32 borderIndentHorisontal = 0,
-                            const quint32 borderIndentVertical = 15,
-                            const quint64 maximumTimeScale = minute,
-                            const quint64 minimumTimeScale = week) :
-                            borderIndentX(borderIndentHorisontal),
-                            borderIndentY(borderIndentVertical),
-                            maximumScale(maximumTimeScale),
-                            minimumScale(minimumTimeScale) {}
+                             const quint32 borderIndentVertical = 15,
+                             const quint64 maximumTimeScale = minute,
+                             const quint64 minimumTimeScale = week) :
+                             borderIndentX(borderIndentHorisontal),
+                             borderIndentY(borderIndentVertical),
+                             maximumScale(maximumTimeScale),
+                             minimumScale(minimumTimeScale) {}
     };
 
 private:
     QDateTime mTimeCenterMark;
-    quint64 mTimeDelta;                               /**< Current scale - msec from the central mark to both borders*/
+    quint64 mTimeDelta;                               // Current scale - msec from the central mark to both borders
     QPoint mMousePos;
-    QSizeF mSize;                                     /**< Current grid scale */
+    QSizeF mSize;                                     // Current grid scale
 
     TimeLineGridStyle mStyle;
     TimeLineGridSettings mSettings;
 
 private:
    void drawMarks(QPainter* painter);
+   void drawCurrTimeMark(const double& msecPerPixel, const quint64& currTime, const quint64& endTime,
+                         const quint64& startTime, QPair<int, int>& currTimeMarkBorders,
+                         const QString textFormat, const QFontMetrics& fm, QPainter* painter);
+
+   void drawMouseTimeMark(QPainter* painter);
+   void drawGridMarks(const QFontMetrics& fm, const double& msecPerPixel,
+                      quint64& startTime, const QString textFormat,
+                      QPair<int, int> &currTimeMarkBorders, QPainter *painter);
 
 public:
     TimeLineGrid(QGraphicsItem* parent = 0);
@@ -347,7 +369,7 @@ public:
 
     struct TimeLineItemsSettings
     {
-        quint64 eventsVisibleScale;					          // Minimum scale at which events are still visible. Default - 20 мин
+        quint64 eventsVisibleScale;					          // Minimum scale at which events are still visible. Default - 20 РјРёРЅ
         double infoHeightPortion;                             // Icon area height / total item painting area height. Default - 0.25
         double taskHeightPortion;                             // Task item height / Distance between axis.  Default - 0.25
         double eventsHeightPortion;                           // Event item height / Distance between axis.  Default - 0.5
@@ -377,6 +399,9 @@ private:
 
 private:
     void calculateVisibleItems();
+    void paintVisibleItems(QPainter* painter);
+    void drawAxis(const quint16& resultAreaHeight, QPainter* painter);
+    void paintIcons(const quint16& resultAreaHeight, QPainter* painter);
 
 public:
     TimeLineItems(TaskStoragePtr tasks, QGraphicsItem * parent = 0);
@@ -394,7 +419,7 @@ public:
     TimeLineItemsSettings getSettings() const;
     TimeLineItemsStyle getStyle() const;
 
-    //graphic
+    //graphic  
     void paint(QPainter* painter, const QStyleOptionGraphicsItem * option, QWidget * widget = 0);
     QRectF boundingRect() const;
 };
@@ -404,7 +429,7 @@ public:
 //////////////////////////////////////////////////////////////////////////////
 
 /**
-* Љласс, отвечающий за вычисление параметров масштабированиЯ таймлайна
+* РљР»Р°СЃСЃ, РѕС‚РІРµС‡Р°СЋС‰РёР№ Р·Р° РІС‹С‡РёСЃР»РµРЅРёРµ РїР°СЂР°РјРµС‚СЂРѕРІ РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°РЅРёСЏ С‚Р°Р№РјР»Р°Р№РЅР°
 */
 
 class SphereTimeLineScaler : public QObject
@@ -453,7 +478,7 @@ class SphereTimeLineScroller : public QObject
 {
     Q_OBJECT
 
-    QTimeLine* mScrollingTimeLine;                         // Updates the current position when scrolling
+    QTimeLine* mScrollingTimeLine;                        // Updates the current position when scrolling
     bool mDragIsOngoing;
 
     int mMouseDragDistance;                               // Mouse move distance with left button being pressed
@@ -464,7 +489,8 @@ class SphereTimeLineScroller : public QObject
     QDateTime mScrollStartTime;                           // Scrolling start pos
 
     static const int mFreeFallAcceleration = 10;
-    static const int mElementalScrollTime = 25;            // Elementary scrolling period - 25 msec
+    static const int mElementalScrollTime = 25;           // Elementary scrolling period - 25 msec
+    static const int mTotalElementalScrollDuration = 350; // msec
 
 public:
     SphereTimeLineScroller(QObject* parent = 0);
@@ -498,7 +524,7 @@ signals:
 
 struct TaskStyle
 {
-    QBrush brush;                                        // Brush to paint the task and it's events
+    QBrush brush;                                        // Brush to paint a task and it's events
     QPen infoPen;		                                 // Icons pen
     QString infoIconPath;                                // Path to the task info icon. (in svg)
 
@@ -509,7 +535,7 @@ struct TaskStyle
 };
 
 //////////////////////////////////////////////////////////////////////////////
-///////////////				SphereTimeLineWidget				//////////////////////
+///////////////             SphereTimeLineWidget        //////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 /**
