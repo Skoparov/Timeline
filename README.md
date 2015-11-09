@@ -10,7 +10,7 @@ The concept is there are two types of items : tasks and events.
 - Both tasks and events have time duration. 
 - There is a storage for tasks implemented as a separate class
 
-So, the basic example of using the class may look as follows:
+So, a basic example of using the class may look as follows:
 
 ```
 TaskStoragePtr taskStorage = std::make_shared<TaskStorage>();
